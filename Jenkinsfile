@@ -47,6 +47,43 @@ pipeline {
             }
         }
 
+        stage('Install Dependencies') {
+            steps {
+                echo 'Installation des dépendances PHP'
+                dir("${APP_DIR}") {
+                    sh '''
+                        docker run --rm -v $(pwd):/app -w /app composer:latest \
+                            composer install --no-interaction --prefer-dist --optimize-autoloader
+                    '''
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                echo 'Exécution des tests unitaires (Pest/PHPUnit)'
+                dir("${APP_DIR}") {
+                    sh '''
+                        docker run --rm -v $(pwd):/app -w /app php:8.2-cli bash -c "
+                            # Copier le fichier .env.example si .env n'existe pas
+                            [ ! -f .env ] && cp .env.example .env || true
+                            
+                            # Créer le dossier pour les rapports
+                            mkdir -p storage/test-results
+                            
+                            # Exécuter les tests avec Pest et générer le rapport JUnit
+                            ./vendor/bin/pest --ci --colors=always --log-junit storage/test-results/junit.xml
+                        "
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: "${APP_DIR}/storage/test-results/*.xml"
+                }
+            }
+        }
+
         stage('Trivy FS Scan') {
             steps {
                 echo 'Analyse des fichiers avec Trivy (filesystem)'
