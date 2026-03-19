@@ -35,6 +35,7 @@ pipeline {
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
         DOCKER_TAG = "${BUILD_NUMBER}"
+        APP_DIR = 'wave-app'
     }
 
     stages {
@@ -63,8 +64,9 @@ pipeline {
                             $SCANNER_HOME/bin/sonar-scanner \
                             -Dsonar.projectKey=wave-project \
                             -Dsonar.projectName="Wave Application" \
+                            -Dsonar.sources=${APP_DIR} \
                             -Dsonar.host.url=$SONARQUBE_URL \
-                            -Dsonar.exclusions=k8s/**/*,vendor/**/*,node_modules/**/*
+                            -Dsonar.exclusions=**/k8s/**/*,**/vendor/**/*,**/node_modules/**/*,**/infra/**/*
                         '''
                     }
                 }
@@ -75,10 +77,12 @@ pipeline {
             steps {
                 echo 'Construction de l\'image Docker'
                 withCredentials([string(credentialsId: 'docker-image-name', variable: 'DOCKER_IMAGE')]) {
-                    sh '''
-                        docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
-                        docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
-                    '''
+                    dir("${APP_DIR}") {
+                        sh '''
+                            docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
+                            docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
+                        '''
+                    }
                 }
             }
         }
@@ -121,14 +125,14 @@ pipeline {
                 ]) {
                     sh '''
                         # Mettre à jour le tag de l'image dans deployment.yml
-                        sed -i "s|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" k8s/deployment.yml
+                        sed -i "s|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" ${APP_DIR}/k8s/deployment.yml
                         
                         # Configurer Git
                         git config user.email "jenkins@wave.local"
                         git config user.name "Jenkins CI"
                         
                         # Commit et push les changements
-                        git add k8s/deployment.yml
+                        git add ${APP_DIR}/k8s/deployment.yml
                         git commit -m "ci: update image tag to ${DOCKER_TAG} [skip ci]" || echo "No changes to commit"
                         git push https://${GIT_USERNAME}:${GIT_PASSWORD}@${GIT_REPO_URL} HEAD:main || echo "Push failed or no changes"
                     '''
