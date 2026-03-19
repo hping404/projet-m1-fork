@@ -1,0 +1,98 @@
+# ===========================================
+# GITIGNORE - Projet Wave M1
+# ===========================================
+
+# ===========================================
+# FICHIERS SENSIBLES / SECRETS
+# ===========================================
+*.pem
+*.key
+*.crt
+*.env
+.env.*
+!.env.example
+!.env.database.example
+secrets.yml
+*-secrets.yml
+credentials.json
+
+# ===========================================
+# TERRAFORM
+# ===========================================
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ===========================================
+# ANSIBLE
+# ===========================================
+infra/Ansible/inventory.ini
+infra/Ansible/keys/
+*.retry
+
+# ===========================================
+# KUBERNETES
+# ===========================================
+kubeconfig
+*.kubeconfig
+
+# ===========================================
+# IDE / EDITEURS
+# ===========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================================
+# RAPPORTS DE TESTS / SCANS
+# ===========================================
+trivyfs-report.txt
+trivy-image-report.txt
+*.report.txt
+coverage/
+.coverage
+
+# ===========================================
+# LOGS
+# ===========================================
+*.log
+logs/
+!wave-app/storage/logs/.gitignore
+
+# ===========================================
+# NODE / NPM
+# ===========================================
+node_modules/
+
+# ===========================================
+# PHP / COMPOSER
+# ===========================================
+# vendor/ est inclus dans wave-app pour ce projet
+# Décommenter si vous voulez l'ignorer :
+# wave-app/vendor/
+
+# ===========================================
+# DOCKER
+# ===========================================
+docker-compose.override.yml
+
+# ===========================================
+# TEMPORAIRES
+# ===========================================
+tmp/
+temp/
+*.tmp
+*.bak
