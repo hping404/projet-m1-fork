@@ -1,0 +1,118 @@
+---
+# ===========================================
+# PLAYBOOK : Installation de FluxCD
+# Cible : Serveur avec MicroK8s (Frontend ou Backend)
+# ===========================================
+- name: Installer et configurer FluxCD
+  hosts: frontend
+  become: true
+  vars:
+    flux_version: "2.2.3"
+    github_owner: "VOTRE_USERNAME"
+    github_repo: "projet-m1"
+    github_branch: "main"
+
+  tasks:
+    - name: Télécharger le binaire FluxCD
+      get_url:
+        url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_linux_amd64.tar.gz"
+        dest: /tmp/flux.tar.gz
+        mode: '0644'
+
+    - name: Extraire le binaire FluxCD
+      unarchive:
+        src: /tmp/flux.tar.gz
+        dest: /usr/local/bin/
+        remote_src: yes
+        mode: '0755'
+
+    - name: Vérifier l'installation de Flux
+      command: flux --version
+      register: flux_version_check
+      changed_when: false
+
+    - name: Afficher la version de Flux
+      debug:
+        msg: "FluxCD installé: {{ flux_version_check.stdout }}"
+
+    - name: Vérifier les prérequis FluxCD
+      shell: /usr/local/bin/flux check --pre
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: flux_prereq
+      changed_when: false
+      failed_when: false
+
+    - name: Afficher le résultat des prérequis
+      debug:
+        msg: "{{ flux_prereq.stdout_lines }}"
+
+    - name: Créer le namespace flux-system
+      shell: /snap/bin/microk8s kubectl create namespace flux-system --dry-run=client -o yaml | /snap/bin/microk8s kubectl apply -f -
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: ns_result
+      changed_when: "'created' in ns_result.stdout"
+
+    - name: Installer les composants FluxCD
+      shell: |
+        /usr/local/bin/flux install \
+          --namespace=flux-system \
+          --components-extra=image-reflector-controller,image-automation-controller
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: flux_install
+      changed_when: "'installed' in flux_install.stdout"
+
+    - name: Vérifier l'installation de FluxCD
+      shell: /usr/local/bin/flux check
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: flux_check
+      changed_when: false
+      retries: 3
+      delay: 10
+      until: flux_check.rc == 0
+
+    - name: Afficher le statut de FluxCD
+      debug:
+        msg: "{{ flux_check.stdout_lines }}"
+
+    - name: Copier les fichiers de configuration Flux
+      copy:
+        src: "../flux/"
+        dest: /home/ubuntu/flux-config/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Appliquer la configuration FluxCD
+      shell: /snap/bin/microk8s kubectl apply -k /home/ubuntu/flux-config/
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: flux_apply
+      changed_when: "'created' in flux_apply.stdout or 'configured' in flux_apply.stdout"
+
+- name: Afficher les instructions post-installation
+  hosts: frontend
+  gather_facts: false
+  tasks:
+    - name: Instructions FluxCD
+      debug:
+        msg: |
+          ================================================
+          FluxCD est installé et configuré !
+          
+          Pour utiliser un repo privé GitHub, exécutez :
+          flux create secret git github-credentials \
+            --url=https://github.com/{{ github_owner }}/{{ github_repo }} \
+            --username=git \
+            --password=<GITHUB_TOKEN>
+          
+          Pour vérifier la synchronisation :
+          flux get sources git
+          flux get kustomizations
+          
+          Pour voir les logs :
+          flux logs
+          ================================================

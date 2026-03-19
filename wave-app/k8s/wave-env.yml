@@ -1,5 +1,6 @@
 # ===========================================
 # CONFIGMAP : Variables d'environnement Laravel
+# MySQL et Redis sont sur le serveur Database (externe au cluster K8s)
 # ===========================================
 apiVersion: v1
 kind: ConfigMap
@@ -10,18 +11,18 @@ data:
   APP_NAME: "Wave"
   APP_ENV: "production"
   APP_DEBUG: "false"
-  APP_URL: "http://localhost:8000"
+  APP_URL: "http://wave.local"
   
-  # Base de données
+  # Base de données externe (serveur Database - Docker Compose)
+  # IMPORTANT: Remplacer DATABASE_SERVER_IP par l'IP du serveur Database
   DB_CONNECTION: "mysql"
-  DB_HOST: "db"
+  DB_HOST: "DATABASE_SERVER_IP"
   DB_PORT: "3306"
   DB_DATABASE: "wave"
-  MYSQL_DATABASE: "wave"
-  MYSQL_USER: "wave-user"
+  DB_USERNAME: "wave-user"
   
-  # Redis
-  REDIS_HOST: "wave-redis"
+  # Redis externe (serveur Database - Docker Compose)
+  REDIS_HOST: "DATABASE_SERVER_IP"
   REDIS_PORT: "6379"
   REDIS_PASSWORD: ""
   

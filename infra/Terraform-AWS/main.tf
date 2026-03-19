@@ -73,7 +73,7 @@ resource "aws_route_table_association" "dev_pub_assoc" {
   route_table_id = aws_route_table.dev_pub_route.id
 }
 
-# Groupe de sécurité avec règles dynamiques
+# Groupe de sécurité avec règles dynamiques basées sur var.instance_ports
 resource "aws_security_group" "instance_sgs" {
   for_each = toset(var.instance_names)
 
@@ -82,22 +82,12 @@ resource "aws_security_group" "instance_sgs" {
   vpc_id      = aws_vpc.dev_vpc.id
 
   dynamic "ingress" {
-    for_each = each.value == "CI-CD" ? [
-      { from_port = 22, to_port = 22, protocol = "tcp" }
-    ] : each.value == "Prod" ? [
-      { from_port = 22, to_port = 22, protocol = "tcp" }
-    ] : each.value == "Test" ? [
-      { from_port = 22, to_port = 22, protocol = "tcp" }
-    ] : each.value == "Monitoring" ? [
-      { from_port = 22, to_port = 22, protocol = "tcp" }
-    ] : each.value == "BDD" ? [ 
-      { from_port = 22, to_port = 22, protocol = "tcp" }        
-    ] : []
+    for_each = var.instance_ports[each.value]
 
     content {
-      description = "Access ${each.value}"
-      from_port   = ingress.value.from_port
-      to_port     = ingress.value.to_port
+      description = ingress.value.description
+      from_port   = ingress.value.port
+      to_port     = ingress.value.port
       protocol    = ingress.value.protocol
       cidr_blocks = ["0.0.0.0/0"]
     }
@@ -141,18 +131,38 @@ resource "aws_s3_bucket" "dev_s3_bucket" {
 
 resource "local_file" "inventory_ini" {
   content = <<-EOF
-    [serveurs]
-    ${var.instance_names[0]} ansible_host=${aws_instance.my_instances[0].public_ip} ansible_user=ubuntu ansible_connection=ssh ansible_ssh_private_key_file=./keys/${var.instance_names[0]}_private_key.pem
-    ${var.instance_names[1]} ansible_host=${aws_instance.my_instances[1].public_ip} ansible_user=ubuntu ansible_connection=ssh ansible_ssh_private_key_file=./keys/${var.instance_names[1]}_private_key.pem
-    ${var.instance_names[2]} ansible_host=${aws_instance.my_instances[2].public_ip} ansible_user=ubuntu ansible_connection=ssh ansible_ssh_private_key_file=./keys/${var.instance_names[2]}_private_key.pem
-    ${var.instance_names[3]} ansible_host=${aws_instance.my_instances[3].public_ip} ansible_user=ubuntu ansible_connection=ssh ansible_ssh_private_key_file=./keys/${var.instance_names[3]}_private_key.pem
-    ${var.instance_names[4]} ansible_host=${aws_instance.my_instances[4].public_ip} ansible_user=ubuntu ansible_connection=ssh ansible_ssh_private_key_file=./keys/${var.instance_names[4]}_private_key.pem
-
     [all:vars]
     ansible_python_interpreter=/usr/bin/python3
+    ansible_user=ubuntu
+    ansible_connection=ssh
+
+    [frontend]
+    ${var.instance_names[0]} ansible_host=${aws_instance.my_instances[0].public_ip} ansible_ssh_private_key_file=./keys/${var.instance_names[0]}_private_key.pem
+
+    [backend]
+    ${var.instance_names[1]} ansible_host=${aws_instance.my_instances[1].public_ip} ansible_ssh_private_key_file=./keys/${var.instance_names[1]}_private_key.pem
+
+    [database]
+    ${var.instance_names[2]} ansible_host=${aws_instance.my_instances[2].public_ip} ansible_ssh_private_key_file=./keys/${var.instance_names[2]}_private_key.pem
+
+    [monitoring]
+    ${var.instance_names[3]} ansible_host=${aws_instance.my_instances[3].public_ip} ansible_ssh_private_key_file=./keys/${var.instance_names[3]}_private_key.pem
+
+    [jenkins]
+    ${var.instance_names[4]} ansible_host=${aws_instance.my_instances[4].public_ip} ansible_ssh_private_key_file=./keys/${var.instance_names[4]}_private_key.pem
+
+    [webservers:children]
+    frontend
+    backend
+
+    [serveurs:children]
+    frontend
+    backend
+    database
+    monitoring
+    jenkins
   EOF
 
-  # Le fichier sera stocké à la racine du projet
   filename = "../Ansible/inventory.ini"
 }
 

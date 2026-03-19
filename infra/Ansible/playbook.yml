@@ -1,16 +1,23 @@
 ---
-  - name: Installer Docker sur les Nodes
-    hosts: serveurs
-    become: true
+# ===========================================
+# PLAYBOOK PRINCIPAL : Configuration de l'infrastructure Wave
+# Architecture : Frontend/Backend (MicroK8s + FluxCD) + Database (Docker) + Monitoring + Jenkins
+# ===========================================
 
-    tasks:
-    - name: Copier le script d'installation
+# ===========================================
+# ETAPE 1 : Installation des prérequis sur tous les serveurs
+# ===========================================
+- name: Installer Docker sur tous les serveurs
+  hosts: serveurs
+  become: true
+  tasks:
+    - name: Copier le script d'installation Docker
       copy:
         src: ./docker-install.sh
         dest: /tmp/docker-install.sh
         mode: '0755'
 
-    - name: Exécuter le script
+    - name: Exécuter le script d'installation Docker
       command: /bin/bash /tmp/docker-install.sh
 
     - name: Supprimer le script
@@ -26,54 +33,174 @@
 
     - name: Afficher la version de Docker
       debug:
-        msg: "Version de Docker installée: {{ docker_version.stdout }}"
+        msg: "Docker installé: {{ docker_version.stdout }}"
       when: docker_version.rc == 0
 
-  - name: Installer Git sur les hôtes
-    hosts: serveurs
-    become: true
-
-    tasks:
-    - name: Installer Git sur Ubuntu/Debian
+- name: Installer les outils de base sur tous les serveurs
+  hosts: serveurs
+  become: true
+  tasks:
+    - name: Mettre à jour apt et installer les paquets de base
       apt:
-        name: git
+        name:
+          - git
+          - curl
+          - wget
+          - vim
+          - htop
+          - net-tools
         state: present
+        update_cache: yes
 
-  - name: Installer Zabbix avec Docker Compose
-    hosts: Monitoring
-    become: true
-    tasks:
-      - name: Créer un répertoire pour le docker-compose
-        file:
-          path: /home/monitoring
-          state: directory
+# ===========================================
+# ETAPE 2 : Configuration du serveur Database (MySQL + Redis)
+# ===========================================
+- name: Configurer le serveur Database
+  import_playbook: playbook-database.yml
 
-      - name: Cloner le dépôt Zabbix et Grafana Docker
-        git:
-          repo: https://github.com/akmalovaa/zabbix-docker.git
-          dest: /home/monitoring
-          update: yes
+# ===========================================
+# ETAPE 3 : Configuration du serveur Monitoring (Zabbix + Grafana)
+# ===========================================
+- name: Installer Zabbix et Grafana
+  hosts: monitoring
+  become: true
+  tasks:
+    - name: Créer le répertoire monitoring
+      file:
+        path: /home/monitoring
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
 
-      - name: Démarrer les services avec Docker Compose
-        command:
-          cmd: docker compose up -d
-          chdir: /home/monitoring
+    - name: Cloner le dépôt Zabbix et Grafana Docker
+      git:
+        repo: https://github.com/akmalovaa/zabbix-docker.git
+        dest: /home/monitoring
+        update: yes
 
-  - name: Installer Jenkins et SonarQube
-    hosts: CI-CD
-    become: true
-    tasks:
-      - name: Créer un répertoire pour le docker-compose
-        file:
-          path: /home/devtools
-          state: directory
+    - name: Démarrer les services Zabbix et Grafana
+      command: docker compose up -d
+      args:
+        chdir: /home/monitoring
 
-      - name: Copier le fichier docker-compose.yml
-        copy:
-          src: ./docker-compose.yml
-          dest: /home/devtools/docker-compose.yml
+    - name: Récupérer l'IP du serveur Monitoring
+      shell: hostname -I | awk '{print $1}'
+      register: monitoring_ip
+      changed_when: false
 
-      - name: Démarrer les services Docker Compose
-        command: docker compose up -d
-        args:
-          chdir: /home/devtools/
+    - name: Afficher les URLs de monitoring
+      debug:
+        msg: |
+          ================================================
+          Monitoring configuré !
+          - Zabbix: http://{{ monitoring_ip.stdout }}:80
+          - Grafana: http://{{ monitoring_ip.stdout }}:3000
+          ================================================
+
+# ===========================================
+# ETAPE 4 : Configuration du serveur Jenkins (CI/CD)
+# ===========================================
+- name: Installer Jenkins et SonarQube
+  hosts: jenkins
+  become: true
+  tasks:
+    - name: Créer le répertoire devtools
+      file:
+        path: /home/devtools
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copier le fichier docker-compose.yml pour Jenkins
+      copy:
+        src: ./docker-compose.yml
+        dest: /home/devtools/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Démarrer Jenkins et SonarQube
+      command: docker compose up -d
+      args:
+        chdir: /home/devtools/
+
+    - name: Attendre que Jenkins soit prêt
+      wait_for:
+        port: 8085
+        delay: 30
+        timeout: 300
+
+    - name: Récupérer l'IP du serveur Jenkins
+      shell: hostname -I | awk '{print $1}'
+      register: jenkins_ip
+      changed_when: false
+
+    - name: Récupérer le mot de passe initial Jenkins
+      shell: docker exec jenkins_container cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "En attente..."
+      register: jenkins_password
+      changed_when: false
+      retries: 5
+      delay: 30
+      until: jenkins_password.stdout != "En attente..."
+
+    - name: Afficher les informations Jenkins
+      debug:
+        msg: |
+          ================================================
+          Jenkins et SonarQube configurés !
+          
+          Jenkins:
+            - URL: http://{{ jenkins_ip.stdout }}:8085
+            - Mot de passe initial: {{ jenkins_password.stdout }}
+          
+          SonarQube:
+            - URL: http://{{ jenkins_ip.stdout }}:9000
+            - Login: admin / admin
+          ================================================
+
+# ===========================================
+# ETAPE 5 : Installation de MicroK8s sur Frontend/Backend
+# ===========================================
+- name: Installer MicroK8s
+  import_playbook: playbook-microk8s.yml
+
+# ===========================================
+# ETAPE 6 : Installation de FluxCD
+# ===========================================
+- name: Installer FluxCD
+  import_playbook: playbook-fluxcd.yml
+
+# ===========================================
+# RESUME FINAL
+# ===========================================
+- name: Afficher le résumé de l'installation
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Résumé de l'infrastructure
+      debug:
+        msg: |
+          ================================================
+          INFRASTRUCTURE WAVE DEPLOYEE AVEC SUCCES !
+          ================================================
+          
+          1. SERVEURS CONFIGURES :
+             - Frontend : MicroK8s + FluxCD (Nginx)
+             - Backend  : MicroK8s + FluxCD (PHP-FPM)
+             - Database : Docker Compose (MySQL + Redis)
+             - Monitoring : Zabbix + Grafana
+             - Jenkins  : Jenkins + SonarQube
+          
+          2. PROCHAINES ETAPES :
+             a) Mettre à jour wave-env.yml avec l'IP du serveur Database
+             b) Configurer le repo Git dans FluxCD (wave-source.yaml)
+             c) Pousser le code sur GitHub pour déclencher FluxCD
+             d) Configurer Jenkins avec les credentials Docker Hub
+          
+          3. COMMANDES UTILES :
+             - Vérifier MicroK8s: microk8s status
+             - Vérifier FluxCD: flux get all
+             - Voir les pods: microk8s kubectl get pods -n wave
+          ================================================

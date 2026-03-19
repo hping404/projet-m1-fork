@@ -1,0 +1,27 @@
+# ===========================================
+# KUSTOMIZATION : Déploiement automatique de Wave
+# FluxCD applique les manifestes K8s depuis le repo Git
+# ===========================================
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: wave-app
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./wave-app/k8s
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: wave-app
+  targetNamespace: wave
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: wave-app
+      namespace: wave
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: wave-nginx
+      namespace: wave
+  timeout: 3m

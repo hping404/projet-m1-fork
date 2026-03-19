@@ -1,23 +1,7 @@
 # ===========================================
 # PVC : Persistent Volume Claims
+# MySQL et Redis sont externes (pas besoin de PVC ici)
 # ===========================================
-
-# Base de données MySQL
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: db-data-pvc
-  labels:
-    app: wave-db
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: microk8s-hostpath
-
----
 
 # Cache Laravel (bootstrap/cache)
 apiVersion: v1
@@ -26,6 +10,7 @@ metadata:
   name: wave-cache-pvc
   labels:
     app: wave-app
+    tier: backend
 spec:
   accessModes:
     - ReadWriteOnce
@@ -43,27 +28,11 @@ metadata:
   name: wave-storage-pvc
   labels:
     app: wave-app
+    tier: backend
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 5Gi
-  storageClassName: microk8s-hostpath
-
----
-
-# Redis data persistence
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: redis-data-pvc
-  labels:
-    app: wave-redis
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
   storageClassName: microk8s-hostpath

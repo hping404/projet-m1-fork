@@ -1,0 +1,22 @@
+# ===========================================
+# KUSTOMIZATION : Configuration pour FluxCD
+# Gère tous les manifestes K8s de l'application Wave
+# ===========================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: wave
+
+resources:
+  - namespace.yaml
+  - wave-env.yml
+  - wave-secrets.yml
+  - wave-nginx-config.yml
+  - pvc.yml
+  - deployment.yml
+  - service.yml
+  - ingress.yml
+
+commonLabels:
+  app.kubernetes.io/name: wave
+  app.kubernetes.io/managed-by: fluxcd

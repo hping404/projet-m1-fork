@@ -1,0 +1,126 @@
+---
+# ===========================================
+# PLAYBOOK : Configuration du serveur Database
+# Déploie MySQL et Redis via Docker Compose
+# ===========================================
+- name: Configurer le serveur Database
+  hosts: database
+  become: true
+  vars:
+    database_dir: /home/database
+    mysql_root_password: "wave23"
+    mysql_database: "wave"
+    mysql_user: "wave-user"
+    mysql_password: "wave23"
+
+  tasks:
+    - name: Créer le répertoire database
+      file:
+        path: "{{ database_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Créer le répertoire pour les scripts d'init MySQL
+      file:
+        path: "{{ database_dir }}/mysql-init"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copier le fichier docker-compose.database.yml
+      copy:
+        src: ./docker-compose.database.yml
+        dest: "{{ database_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Créer le fichier .env pour la base de données
+      copy:
+        content: |
+          MYSQL_ROOT_PASSWORD={{ mysql_root_password }}
+          MYSQL_DATABASE={{ mysql_database }}
+          MYSQL_USER={{ mysql_user }}
+          MYSQL_PASSWORD={{ mysql_password }}
+          REDIS_PASSWORD=
+        dest: "{{ database_dir }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Créer un script d'initialisation MySQL (optionnel)
+      copy:
+        content: |
+          -- Script d'initialisation de la base de données Wave
+          -- Ce fichier est exécuté automatiquement au premier démarrage
+          
+          -- Accorder les privilèges à l'utilisateur wave-user
+          GRANT ALL PRIVILEGES ON wave.* TO 'wave-user'@'%';
+          FLUSH PRIVILEGES;
+        dest: "{{ database_dir }}/mysql-init/01-init.sql"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Démarrer les services MySQL et Redis
+      shell: docker compose up -d
+      args:
+        chdir: "{{ database_dir }}"
+      register: compose_result
+
+    - name: Attendre que MySQL soit prêt
+      shell: docker exec wave-mysql mysqladmin ping -h localhost -u root -p{{ mysql_root_password }}
+      register: mysql_ready
+      retries: 30
+      delay: 5
+      until: mysql_ready.rc == 0
+      changed_when: false
+
+    - name: Attendre que Redis soit prêt
+      shell: docker exec wave-redis redis-cli ping
+      register: redis_ready
+      retries: 10
+      delay: 3
+      until: "'PONG' in redis_ready.stdout"
+      changed_when: false
+
+    - name: Vérifier les conteneurs en cours d'exécution
+      shell: docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"
+      register: docker_ps
+      changed_when: false
+
+    - name: Afficher les conteneurs
+      debug:
+        msg: "{{ docker_ps.stdout_lines }}"
+
+    - name: Récupérer l'adresse IP du serveur
+      shell: hostname -I | awk '{print $1}'
+      register: server_ip
+      changed_when: false
+
+    - name: Afficher les informations de connexion
+      debug:
+        msg: |
+          ================================================
+          Base de données configurée avec succès !
+          
+          Serveur IP: {{ server_ip.stdout }}
+          
+          MySQL:
+            - Host: {{ server_ip.stdout }}
+            - Port: 3306
+            - Database: {{ mysql_database }}
+            - User: {{ mysql_user }}
+            - Password: {{ mysql_password }}
+          
+          Redis:
+            - Host: {{ server_ip.stdout }}
+            - Port: 6379
+          
+          IMPORTANT: Mettez à jour wave-env.yml avec cette IP :
+            DB_HOST: "{{ server_ip.stdout }}"
+            REDIS_HOST: "{{ server_ip.stdout }}"
+          ================================================

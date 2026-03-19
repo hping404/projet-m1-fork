@@ -1,0 +1,83 @@
+---
+# ===========================================
+# PLAYBOOK : Installation de MicroK8s
+# Cible : Serveurs Frontend et Backend
+# ===========================================
+- name: Installer et configurer MicroK8s
+  hosts: webservers
+  become: true
+  vars:
+    microk8s_addons:
+      - dns
+      - storage
+      - ingress
+      - registry
+      - hostpath-storage
+
+  tasks:
+    - name: Installer snapd
+      apt:
+        name: snapd
+        state: present
+        update_cache: yes
+
+    - name: Installer MicroK8s via snap
+      snap:
+        name: microk8s
+        classic: yes
+        state: present
+
+    - name: Ajouter l'utilisateur ubuntu au groupe microk8s
+      user:
+        name: ubuntu
+        groups: microk8s
+        append: yes
+
+    - name: Créer le dossier .kube
+      file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Attendre que MicroK8s soit prêt
+      command: /snap/bin/microk8s status --wait-ready
+      changed_when: false
+      retries: 5
+      delay: 10
+      register: microk8s_status
+      until: microk8s_status.rc == 0
+
+    - name: Activer les addons MicroK8s
+      command: "/snap/bin/microk8s enable {{ item }}"
+      loop: "{{ microk8s_addons }}"
+      register: addon_result
+      changed_when: "'is already enabled' not in addon_result.stdout"
+
+    - name: Générer le fichier kubeconfig
+      shell: /snap/bin/microk8s config > /home/ubuntu/.kube/config
+      args:
+        creates: /home/ubuntu/.kube/config
+
+    - name: Définir les permissions du kubeconfig
+      file:
+        path: /home/ubuntu/.kube/config
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Créer un alias kubectl
+      lineinfile:
+        path: /home/ubuntu/.bashrc
+        line: "alias kubectl='/snap/bin/microk8s kubectl'"
+        state: present
+
+    - name: Vérifier le statut de MicroK8s
+      command: /snap/bin/microk8s status
+      register: microk8s_final_status
+      changed_when: false
+
+    - name: Afficher le statut de MicroK8s
+      debug:
+        msg: "{{ microk8s_final_status.stdout_lines }}"

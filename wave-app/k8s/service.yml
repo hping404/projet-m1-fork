@@ -1,14 +1,16 @@
 # ===========================================
 # SERVICES : Exposition des pods
+# MySQL et Redis sont externes (Docker Compose sur serveur Database)
 # ===========================================
 
-# Service PHP-FPM (wave-app)
+# Service PHP-FPM (wave-app) - Backend
 apiVersion: v1
 kind: Service
 metadata:
   name: wave-app
   labels:
     app: wave-app
+    tier: backend
 spec:
   selector:
     app: wave-app
@@ -21,51 +23,14 @@ spec:
 
 ---
 
-# Service MySQL (db)
-apiVersion: v1
-kind: Service
-metadata:
-  name: db
-  labels:
-    app: wave-db
-spec:
-  selector:
-    app: wave-db
-  ports:
-    - name: mysql
-      protocol: TCP
-      port: 3306
-      targetPort: 3306
-  type: ClusterIP
-
----
-
-# Service Redis
-apiVersion: v1
-kind: Service
-metadata:
-  name: wave-redis
-  labels:
-    app: wave-redis
-spec:
-  selector:
-    app: wave-redis
-  ports:
-    - name: redis
-      protocol: TCP
-      port: 6379
-      targetPort: 6379
-  type: ClusterIP
-
----
-
-# Service Nginx (LoadBalancer - exposition externe)
+# Service Nginx (wave-nginx) - Frontend
 apiVersion: v1
 kind: Service
 metadata:
   name: wave-nginx
   labels:
     app: wave-nginx
+    tier: frontend
 spec:
   selector:
     app: wave-nginx

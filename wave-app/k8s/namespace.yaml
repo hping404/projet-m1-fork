@@ -1,0 +1,10 @@
+# ===========================================
+# NAMESPACE : Isolation de l'application Wave
+# ===========================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wave
+  labels:
+    app.kubernetes.io/name: wave
+    app.kubernetes.io/managed-by: fluxcd

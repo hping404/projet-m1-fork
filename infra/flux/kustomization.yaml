@@ -1,0 +1,9 @@
+# ===========================================
+# KUSTOMIZATION : Racine pour FluxCD
+# ===========================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - wave-source.yaml
+  - wave-kustomization.yaml
